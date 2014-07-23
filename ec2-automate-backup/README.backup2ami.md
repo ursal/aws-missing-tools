@@ -5,7 +5,9 @@ Since ec2-automate-backup2ami based on the latest version of colinbjohnson/aws-m
 * -i option specifies the single instance (instance id) to backup (either -i or -t option is required)
 * -k option now takes suffix which specifies the dimension of the purging interval: d for days (default), h for hours, m for minutes
 * -s option should be either "instanceid" or "tag"
-Known bugs: it might not work under MAC OS/X (check and correct the 4th line in get_purge_after_date() function)
+
+# Known bugs:
+It might not work under MAC OS/X (check and correct the 4th line in get_purge_after_date() function)
 
 # Directions For Use:
 ## Example of Use:
