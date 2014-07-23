@@ -1,5 +1,5 @@
 # Introduction:
-ec2-automate-backup2ami is a very similar tool, which (unlike ec2-automate-backup) snapshots whole EC2 instances by creating AMI. This should significately simplify the restoration process. Also, there's little addon which finds instances tagged for backup throughout all regions.
+ec2-automate-backup2ami is a very similar tool, which (unlike ec2-automate-backup) snapshots whole EC2 instances by creating AMI. This should significantely simplify the restoration process. Also, there's little addon which finds instances tagged for backup throughout all regions.
 Since ec2-automate-backup2ami based on the latest version of colinbjohnson/aws-missing-tools/ec2-automate-backup, the syntax has slightly changed:
 * -v option is removed
 * -i option specifies the single instance to backup (either -i or -t option is required)
