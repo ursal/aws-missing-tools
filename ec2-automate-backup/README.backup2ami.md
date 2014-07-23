@@ -12,6 +12,7 @@ It might not work under MAC OS/X (check and correct the 4th line in get_purge_af
 # Directions For Use:
 ## Example of Use:
 Here is how I execute it from cron:
+
 `0 3 * * * . $HOME/.bashrc; ec2-automate-backup2ami.sh -s tag -t "Backup=true" -k 14d -p -h -u -n > ec2-automate-backup2ami.stage.log 2>&1 || cat ec2-automate-backup2ami.stage.log | grep -q UnauthorizedOperation && cat ec2-automate-backup2ami.stage.log | mail -s "EC2 AMI auto-backup: failed" monitor@mydomain`
 
 - Author: jazzl0ver, based on Colin Johnson's ec2-automate-backup script
