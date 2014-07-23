@@ -5,6 +5,8 @@ ec2-automate-backup was created to provide easy backup/snapshot functionality fo
 * run ec2-automate-backup using cron to produce a daily backup (example: `"0 0 * * 0 ec2-user /home/ec2-user/ec2-automate-backup.sh -v "vol-6d6a0527 vol-636a0112" > /home/ec2-user/ec2-automate-backup_`date +"%Y%m%d"`.log"`)
 * run ec2-automate-backup to snapshot all EBS volumes that contain the tag "Backup=true" (example: `"0 0 * * 0 ec2-user /home/ec2-user/ec2-automate-backup.sh -s tag -t "Backup=true" > /home/ec2-user/ec2-automate-backup_`date +"%Y%m%d"`.log"`)
 
+For ec2-automate-backup2ami description check the file READMI.backup2ami.md
+
 # Directions For Use:
 ## Example of Use:
 `ec2-automate-backup -v vol-6d6a0527`
