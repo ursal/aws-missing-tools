@@ -6,6 +6,8 @@ Since ec2-automate-backup2ami based on the latest version of colinbjohnson/aws-m
 * -k option now takes suffix which specifies the dimension of the purging interval: d for days (default), h for hours, m for minutes
 * -s option should be either "instanceid" or "tag"
 
+ec2-backup-wrapper is a helper script which sends email alerts if the backup process has failed
+
 # Known bug:
 It might not work under MAC OS/X (check and correct the 4th line in get_purge_after_date() function)
 
@@ -13,7 +15,7 @@ It might not work under MAC OS/X (check and correct the 4th line in get_purge_af
 ## Example of Use:
 Here is how I execute it from cron:
 
-`0 3 * * * . $HOME/.bashrc; ec2-automate-backup2ami.sh -s tag -t "Backup=true" -k 14d -p -h -u -n > ec2-automate-backup2ami.stage.log 2>&1 || cat ec2-automate-backup2ami.stage.log | grep -q UnauthorizedOperation && cat ec2-automate-backup2ami.stage.log | mail -s "EC2 AMI auto-backup: failed" monitor@mydomain`
+`00 2 * * * . $HOME/.bashrc; ./ec2-backup-wrapper.sh prod "alerts@mydomain.cc"`
 
 - Author: jazzl0ver, based on Colin Johnson's ec2-automate-backup script
 - Date: 2014-07-22
