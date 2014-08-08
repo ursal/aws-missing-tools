@@ -58,7 +58,7 @@ create_AMI_Tags() {
   snapshot_tags=""
   #if $name_tag_create is true then add instance name to the variable $snapshot_tags
   if $name_tag_create; then
-    ec2_snapshot_name=$(ec2-describe-instances ${instance_selected} | grep ^TAG | grep Name | cut -f 5)
+    ec2_snapshot_name=$(ec2-describe-instances --region $region ${instance_selected} | grep ^TAG | grep Name | cut -f 5)
     snapshot_tags="$snapshot_tags --tag Name=$ec2_snapshot_name"
   fi
   #if $hostname_tag_create is true then append --tag InitiatingHost=$(hostname -f) to the variable $snapshot_tags
@@ -253,7 +253,7 @@ for region in $regions; do
     ec2_snapshot_description="ec2ab_${instance_selected}_$date_current"
     ec2_snapshot_name=$(ec2-describe-instances ${instance_selected} | grep ^TAG | grep Name | cut -f 5)
     ec2_snapshot_name="ec2ab_${ec2_snapshot_name}_$date_current"
-    ec2_create_snapshot_result=$(ec2-create-image -n $ec2_snapshot_name --no-reboot --region $region -d $ec2_snapshot_description $instance_selected 2>&1)
+    ec2_create_snapshot_result=$(ec2-create-image -v -n $ec2_snapshot_name --no-reboot --region $region -d $ec2_snapshot_description $instance_selected 2>&1)
     if [[ $? != 0 ]]; then
       echo -e "An error occured when running ec2-create-image. The error returned is below:\n$ec2_create_snapshot_result" 1>&2 ; exit 70
     else
