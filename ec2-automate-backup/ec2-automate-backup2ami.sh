@@ -251,7 +251,7 @@ for region in $regions; do
   #the loop below is called once for each volume in $ebs_backup_list - the currently selected EBS volume is passed in as "ebs_selected"
   for instance_selected in $instance_backup_list; do
     ec2_snapshot_description="ec2ab_${instance_selected}_$date_current"
-    ec2_snapshot_name=$(ec2-describe-instances ${instance_selected} | grep ^TAG | grep Name | cut -f 5)
+    ec2_snapshot_name=$(ec2-describe-instances --region $region ${instance_selected} | grep ^TAG | grep Name | cut -f 5)
     ec2_snapshot_name="ec2ab_${ec2_snapshot_name}_$date_current"
     ec2_create_snapshot_result=$(ec2-create-image -v -n $ec2_snapshot_name --no-reboot --region $region -d $ec2_snapshot_description $instance_selected 2>&1)
     if [[ $? != 0 ]]; then
