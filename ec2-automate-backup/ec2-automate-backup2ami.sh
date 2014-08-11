@@ -257,7 +257,7 @@ for region in $regions; do
     if [[ $? != 0 ]]; then
       echo -e "An error occured when running ec2-create-image. The error returned is below:\n$ec2_create_snapshot_result" 1>&2 ; exit 70
     else
-      ec2_snapshot_resource_id=$(echo "$ec2_create_snapshot_result" | cut -f 2)
+      ec2_snapshot_resource_id=$(echo "$ec2_create_snapshot_result" | grep ^IMAGE | cut -f 2)
     fi
     create_AMI_Tags
   done
