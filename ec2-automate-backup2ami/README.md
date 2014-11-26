@@ -1,5 +1,5 @@
 # Introduction:
-ec2-automate-backup2ami is a very similar tool, which (unlike ec2-automate-backup) snapshots whole EC2 instances by creating AMI. This should significantely simplify the restoration process. Also, there's little addon which finds instances tagged for backup throughout all regions.
+ec2-automate-backup2ami is a very similar to ec2-automate-backup tool, which (unlike ec2-automate-backup) snapshots whole EC2 instances by creating AMIs. This should significantely simplify the restoration process. Also, there's little addon which finds instances tagged for backup throughout all regions.
 Since ec2-automate-backup2ami based on the latest version of colinbjohnson/aws-missing-tools/ec2-automate-backup, the syntax has slightly changed (in comparing with my version of ec2-automate-backup):
 * -v option is removed
 * -i option specifies the single instance (instance id) to backup (either -i or -t option is required)
@@ -18,6 +18,6 @@ Here is how I execute it from cron:
 `00 2 * * * . $HOME/.bashrc; ./ec2-backup-wrapper.sh prod "alerts@mydomain.cc"`
 
 - Author: jazzl0ver, based on Colin Johnson's ec2-automate-backup script
-- Date: 2014-07-22
-- Version 1.0
+- Date: 2014-11-25
+- Version 2.0
 - License Type: GNU GENERAL PUBLIC LICENSE, Version 3
