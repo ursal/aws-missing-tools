@@ -256,7 +256,7 @@ done
 if [[ -z $regions ]]; then
   #if the environment variable $EC2_REGION is not set set to all possible regions
   if [[ -z $EC2_REGION ]]; then
-    regions=`ec2-describe-regions | grep REGION | grep -v eu-central | cut -f2`
+    regions=`ec2-describe-regions | grep REGION | cut -f2`
   else
     regions=$EC2_REGION
   fi
