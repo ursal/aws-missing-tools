@@ -17,6 +17,7 @@ Here is how I execute it from cron:
 
 `00 2 * * * . $HOME/.bashrc; ./ec2-backup-wrapper.sh prod "alerts@mydomain.cc"`
 
+# Information
 - Author: jazzl0ver, based on Colin Johnson's ec2-automate-backup script
 - Date: 2014-11-25
 - Version 2.0
