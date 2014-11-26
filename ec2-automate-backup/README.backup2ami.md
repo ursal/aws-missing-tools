@@ -4,7 +4,7 @@ Since ec2-automate-backup2ami based on the latest version of colinbjohnson/aws-m
 * -v option is removed
 * -i option specifies the single instance (instance id) to backup (either -i or -t option is required)
 * -k option now takes suffix which specifies the dimension of the purging interval: d for days (default), h for hours, m for minutes
-* -s option should be either "instanceid" or "tag"
+* -s option is a selector which should be either "instanceid" or "tag"
 
 ec2-backup-wrapper is a helper script which sends email alerts if the backup process has failed
 
