@@ -1,6 +1,6 @@
 #!/bin/bash -
 # Date: 2014-11-25
-# Version 0.2
+# Version 2.0
 # License Type: GNU GENERAL PUBLIC LICENSE, Version 3
 # Author:
 # Colin Johnson / https://github.com/colinbjohnson / colin@cloudavail.com
