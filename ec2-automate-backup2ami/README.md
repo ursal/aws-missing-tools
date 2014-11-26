@@ -11,8 +11,7 @@ ec2-backup-wrapper is a helper script which sends email alerts if the backup pro
 # Known bug:
 It might not work under MAC OS/X (check and correct the 4th line in get_purge_after_date() function)
 
-# Directions For Use:
-## Example of Use:
+# Usage Example:
 Here is how I execute it from cron:
 
 `00 2 * * * . $HOME/.bashrc; ./ec2-backup-wrapper.sh prod "alerts@mydomain.cc"`
