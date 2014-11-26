@@ -1,6 +1,6 @@
 #!/bin/bash -
-# Date: 2014-07-22
-# Version 0.1
+# Date: 2014-11-25
+# Version 0.2
 # License Type: GNU GENERAL PUBLIC LICENSE, Version 3
 # Author:
 # Colin Johnson / https://github.com/colinbjohnson / colin@cloudavail.com
@@ -76,8 +76,13 @@ create_AMI_Tags() {
 
   #if $snapshot_tags is not zero length then set the tag on the snapshot using ec2-create-tags
   if [[ -n $snapshot_tags ]]; then
-    echo "Tagging Snapshot $ec2_snapshot_resource_id with the following Tags: $snapshot_tags"
-    ec2-create-tags $ec2_snapshot_resource_id --region $region $snapshot_tags
+    echo "Tagging AMI $ec2_snapshot_ami_id with the following Tags: $snapshot_tags"
+    ec2-create-tags $ec2_ami_resource_id --region $region $snapshot_tags
+
+    for ec2_snapshot_resource_id in $(ec2-describe-images $ec2_ami_resource_id | grep ^BLOCKDEVICEMAPPING | awk '{print $4}'); do
+        echo "Tagging Snapshot $ec2_snapshot_resource_id (AMI: $ec2_ami_resource_id) with the following Tags: $snapshot_tags"
+        ec2-create-tags $ec2_snapshot_resource_id --region $region $snapshot_tags
+    done
   fi
 }
 
@@ -161,6 +166,39 @@ purge_AMIs() {
     #if purge_after_date is not set then we have a problem. Need to alert user.
     if [[ -z $purge_after_fe ]]; then
       #Alerts user to the fact that a Snapshot was found with PurgeAllow=true but with no PurgeAfterFE date.
+      echo "AMI with the AMI ID \"$snapshot_id_evaluated\" has the tag \"PurgeAllow=true\" but does not have a \"PurgeAfterFE=xxxxxxxxxx\" key/value pair. $app_name is unable to determine if $snapshot_id_evaluated should be purged." 1>&2
+    else
+      # if $purge_after_fe is less than $current_date then
+      # PurgeAfterFE is earlier than the current date
+      # and the snapshot can be safely purged
+      if [[ $purge_after_fe < $current_date ]]; then
+        echo "AMI \"$snapshot_id_evaluated\" with the PurgeAfterFE date of \"$purge_after_fe\" will be deleted."
+        ec2-deregister --region $region $snapshot_id_evaluated
+      fi
+    fi
+  done
+}
+
+purge_EBS_Snapshots() {
+  # snapshot_tag_list is a string containing any snapshot that contains
+  # either the key PurgeAllow or the key PurgeAfterFE
+  # note that filtering for *both* keys is a requirement or else the
+  # PurgeAfterFE key/value pair will not be returned
+  snapshot_tag_list=$(ec2-describe-tags --show-empty-fields --region $region --filter resource-type=snapshot --filter key=PurgeAllow,PurgeAfterFE)
+  # snapshot_purge_allowed is a string containing Snapshot IDs that are
+  # allowed to be purged
+  #snapshot_purge_allowed=$(echo "$snapshot_tag_list" | grep .*PurgeAllow'\s'true | cut -f 3)
+  # if running under CentOS 5 - note the use of "grep -P" in the comment below
+  # use of grep -P is not used because it breaks compatibility with OS X
+  # Mavericks
+  snapshot_purge_allowed=$(echo "$snapshot_tag_list" | grep -P "^.*PurgeAllow\strue$" | cut -f 3)
+
+  for snapshot_id_evaluated in $snapshot_purge_allowed; do
+    #gets the "PurgeAfterFE" date which is in UTC with UNIX Time format (or xxxxxxxxxx / %s)
+    purge_after_fe=$(echo "$snapshot_tag_list" | grep -P .*$snapshot_id_evaluated'\s'PurgeAfterFE.* | cut -f 5)
+    #if purge_after_date is not set then we have a problem. Need to alert user.
+    if [[ -z $purge_after_fe ]]; then
+      #Alerts user to the fact that a Snapshot was found with PurgeAllow=true but with no PurgeAfterFE date.
       echo "Snapshot with the Snapshot ID \"$snapshot_id_evaluated\" has the tag \"PurgeAllow=true\" but does not have a \"PurgeAfterFE=xxxxxxxxxx\" key/value pair. $app_name is unable to determine if $snapshot_id_evaluated should be purged." 1>&2
     else
       # if $purge_after_fe is less than $current_date then
@@ -168,7 +206,7 @@ purge_AMIs() {
       # and the snapshot can be safely purged
       if [[ $purge_after_fe < $current_date ]]; then
         echo "Snapshot \"$snapshot_id_evaluated\" with the PurgeAfterFE date of \"$purge_after_fe\" will be deleted."
-        ec2-deregister --region $region $snapshot_id_evaluated
+        ec2-delete-snapshot --region $region $snapshot_id_evaluated
       fi
     fi
   done
@@ -218,7 +256,7 @@ done
 if [[ -z $regions ]]; then
   #if the environment variable $EC2_REGION is not set set to all possible regions
   if [[ -z $EC2_REGION ]]; then
-    regions=`ec2-describe-regions | grep REGION | cut -f2`
+    regions=`ec2-describe-regions | grep REGION | grep -v eu-central | cut -f2`
   else
     regions=$EC2_REGION
   fi
@@ -253,19 +291,23 @@ for region in $regions; do
     ec2_snapshot_description="ec2ab_${instance_selected}_$date_current"
     ec2_snapshot_name=$(ec2-describe-instances --region $region ${instance_selected} | grep ^TAG | grep Name | cut -f 5)
     ec2_snapshot_name="ec2ab_${ec2_snapshot_name}_$date_current"
-    ec2_create_snapshot_result=$(ec2-create-image -v -n $ec2_snapshot_name --no-reboot --region $region -d $ec2_snapshot_description $instance_selected 2>&1)
+
+    echo "Starting: ec2-create-image -v -n $ec2_snapshot_name --no-reboot --region $region -d $ec2_snapshot_description $instance_selected"
+    ec2_create_ami_result=$(ec2-create-image -n $ec2_snapshot_name -v --no-reboot --region $region -d $ec2_snapshot_description $instance_selected 2>&1)
     if [[ $? != 0 ]]; then
-      echo -e "An error occured when running ec2-create-image. The error returned is below:\n$ec2_create_snapshot_result" 1>&2 ; exit 70
+      echo -e "An error occured when running ec2-create-image. The error returned is below:\n$ec2_create_ami_result" 1>&2 ; exit 70
     else
-      ec2_snapshot_resource_id=$(echo "$ec2_create_snapshot_result" | grep ^IMAGE | cut -f 2)
+      ec2_ami_resource_id=$(echo "$ec2_create_ami_result" | grep ^IMAGE | cut -f 2)
     fi
     create_AMI_Tags
   done
 
   #if purge_snapshots is true, then run purge_EBS_Snapshots function
   if $purge_snapshots; then
-    echo "Snapshot Purging is Starting Now."
+    echo "AMI Purging is Starting Now."
     purge_AMIs
+    echo "Snapshot Purging is Starting Now."
+    purge_EBS_Snapshots
   fi
 
 done
