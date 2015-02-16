@@ -1,6 +1,6 @@
 #!/bin/bash -
 # Date: 2014-11-25
-# Version 2.0
+# Version 3.0
 # License Type: GNU GENERAL PUBLIC LICENSE, Version 3
 # Author:
 # Colin Johnson / https://github.com/colinbjohnson / colin@cloudavail.com
@@ -39,6 +39,7 @@ get_IList() {
         echo "The selected selection_method \"tag\" (-s tag) requires a valid tag (-t key=value) for operation. Correct usage is as follows: \"-s tag -t backup=true\" or \"-s tag -t Name=my_tag.\"" 1>&2 ; exit 64
       fi
       instance_selection_string="--filter tag:$tag"
+#      instance_selection_string=""
       ;;
     *) echo "If you specify a selection_method (-s selection_method) for selecting instances you must select either \"instanceid\" (-s instanceid) or \"tag\" (-s tag)." 1>&2 ; exit 64 ;;
   esac
@@ -54,11 +55,17 @@ get_IList() {
 }
 
 create_AMI_Tags() {
+  instance_region=$1
+  ami_region=$2
+
+  [[ ! -n $instance_region ]] && instance_region=$region
+  [[ ! -n $ami_region ]] && ami_region=$instance_region
+
   #snapshot tags holds all tags that need to be applied to a given snapshot - by aggregating tags we ensure that ec2-create-tags is called only once
   snapshot_tags=""
   #if $name_tag_create is true then add instance name to the variable $snapshot_tags
   if $name_tag_create; then
-    ec2_snapshot_name=$(ec2-describe-instances --region $region ${instance_selected} | grep ^TAG | grep Name | cut -f 5)
+    ec2_snapshot_name=$(ec2-describe-instances --region $instance_region ${instance_selected} | grep ^TAG | grep Name | cut -f 5)
     snapshot_tags="$snapshot_tags --tag Name=$ec2_snapshot_name"
   fi
   #if $hostname_tag_create is true then append --tag InitiatingHost=$(hostname -f) to the variable $snapshot_tags
@@ -76,13 +83,35 @@ create_AMI_Tags() {
 
   #if $snapshot_tags is not zero length then set the tag on the snapshot using ec2-create-tags
   if [[ -n $snapshot_tags ]]; then
-    echo "Tagging AMI $ec2_snapshot_ami_id with the following Tags: $snapshot_tags"
-    ec2-create-tags $ec2_ami_resource_id --region $region $snapshot_tags
+    echo "Tagging AMI $ec2_snapshot_ami_id in $ami_region region with the following Tags: $snapshot_tags"
+    ec2-create-tags $ec2_ami_resource_id --region $ami_region $snapshot_tags
 
-    for ec2_snapshot_resource_id in $(ec2-describe-images $ec2_ami_resource_id | grep ^BLOCKDEVICEMAPPING | awk '{print $4}'); do
+    for ec2_snapshot_resource_id in $(ec2-describe-images $ec2_ami_resource_id --region $ami_region | grep ^BLOCKDEVICEMAPPING | awk '{print $4}'); do
         echo "Tagging Snapshot $ec2_snapshot_resource_id (AMI: $ec2_ami_resource_id) with the following Tags: $snapshot_tags"
-        ec2-create-tags $ec2_snapshot_resource_id --region $region $snapshot_tags
+        ec2-create-tags $ec2_snapshot_resource_id --region $ami_region $snapshot_tags
     done
+  fi
+}
+
+copy_AMI() {
+  # copies AMI to another random region for extra safety
+  arr=($other_regions)
+  other_regions_count=${#arr[*]}
+  random=$(/usr/bin/shuf -i 1-${other_regions_count} -n 1)
+  random_region=${arr[$random-1]}
+
+  #if $random_region is not zero length then set do the copy
+  if [[ -n $random_region ]]; then
+    echo "Copying AMI $ec2_snapshot_ami_id to randomly selected $random_region region"
+    ec2_copy_ami_result=$(ec2-copy-image --source-region $region --source-ami-id $ec2_ami_resource_id --region $random_region --name $ec2_snapshot_name --description "Backup of $ec2_ami_resource_id from $region region" 2>&1)
+    if [[ $? != 0 ]]; then
+      echo -e "An error occured when running ec2-copy-image. The error returned is below:\n$ec2_copy_ami_result" 1>&2 ; exit 70
+    else
+      ec2_ami_resource_id=$(echo "$ec2_copy_ami_result" | grep ^IMAGE | cut -f 2)
+      create_AMI_Tags $region $random_region
+    fi
+  else
+    echo "This should never happen"
   fi
 }
 
@@ -225,9 +254,11 @@ hostname_tag_create=false
 user_tags=false
 #sets the Purge Snapshot feature to false - if purge_snapshots=true then snapshots will be purged
 purge_snapshots=false
+#do not make a copy of an AMI to a random region
+make_copy=false
 #handles options processing
 
-while getopts :s:c:r:i:t:k:pnhu opt; do
+while getopts :s:c:r:i:t:k:y:pnhu opt; do
   case $opt in
     s) selection_method="$OPTARG" ;;
     c) cron_primer="$OPTARG" ;;
@@ -235,6 +266,7 @@ while getopts :s:c:r:i:t:k:pnhu opt; do
     v) instanceid="$OPTARG" ;;
     t) tag="$OPTARG" ;;
     k) purge_after_input="$OPTARG" ;;
+    y) make_copy="$OPTARG" ;;
     n) name_tag_create=true ;;
     h) hostname_tag_create=true ;;
     p) purge_snapshots=true ;;
@@ -256,7 +288,7 @@ done
 if [[ -z $regions ]]; then
   #if the environment variable $EC2_REGION is not set set to all possible regions
   if [[ -z $EC2_REGION ]]; then
-    regions=`ec2-describe-regions | grep REGION | cut -f2`
+    regions=$(ec2-describe-regions | grep REGION | cut -f2)
   else
     regions=$EC2_REGION
   fi
@@ -282,8 +314,9 @@ fi
 
 for region in $regions; do
   echo "Region: $region"
+  other_regions=$(ec2-describe-regions | grep REGION | grep -v $region | cut -f2)
 
-  #get_EBS_List gets a list of EBS instances for which a snapshot is desired. The list of EBS instances depends upon the selection_method that is provided by user input
+  #get_IList gets a list of AMIs for which a snapshot is desired. The list of AMIs depends upon the selection_method that is provided by user input
   get_IList
 
   #the loop below is called once for each volume in $ebs_backup_list - the currently selected EBS volume is passed in as "ebs_selected"
@@ -298,8 +331,11 @@ for region in $regions; do
       echo -e "An error occured when running ec2-create-image. The error returned is below:\n$ec2_create_ami_result" 1>&2 ; exit 70
     else
       ec2_ami_resource_id=$(echo "$ec2_create_ami_result" | grep ^IMAGE | cut -f 2)
+      create_AMI_Tags $region
+      if $make_copy; then
+         copy_AMI
+      fi
     fi
-    create_AMI_Tags
   done
 
   #if purge_snapshots is true, then run purge_EBS_Snapshots function
