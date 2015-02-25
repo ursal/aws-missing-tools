@@ -9,7 +9,7 @@ EMAILS=$2
 
 source .$MODE
 
-$BACKUP_SCRIPT -s tag -t "Backup=true" -k 14d -p -h -u -n &> $LOG
+$BACKUP_SCRIPT -s tag -t "Backup=true" -k 14d -y -p -h -u -n &> $LOG
 RES=$?
 
 if [ ! "x$RES" = "x0" ]; then
