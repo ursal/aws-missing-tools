@@ -1,6 +1,6 @@
 #!/bin/bash -
-# Date: 2014-11-25
-# Version 3.0
+# Date: 2015-02-25
+# Version 3.1
 # License Type: GNU GENERAL PUBLIC LICENSE, Version 3
 # Author:
 # Colin Johnson / https://github.com/colinbjohnson / colin@cloudavail.com
@@ -180,29 +180,38 @@ purge_AMIs() {
   # either the key PurgeAllow or the key PurgeAfterFE
   # note that filtering for *both* keys is a requirement or else the
   # PurgeAfterFE key/value pair will not be returned
-  snapshot_tag_list=$(ec2-describe-tags --show-empty-fields --region $region --filter resource-type=image --filter key=PurgeAllow,PurgeAfterFE)
+  ami_tag_list=$(ec2-describe-tags --show-empty-fields --region $region --filter resource-type=image --filter key=PurgeAllow,PurgeAfterFE)
   # snapshot_purge_allowed is a string containing Snapshot IDs that are
   # allowed to be purged
-  #snapshot_purge_allowed=$(echo "$snapshot_tag_list" | grep .*PurgeAllow'\s'true | cut -f 3)
+  #snapshot_purge_allowed=$(echo "$ami_tag_list" | grep .*PurgeAllow'\s'true | cut -f 3)
   # if running under CentOS 5 - note the use of "grep -P" in the comment below
   # use of grep -P is not used because it breaks compatibility with OS X
   # Mavericks
-  snapshot_purge_allowed=$(echo "$snapshot_tag_list" | grep -P "^.*PurgeAllow\strue$" | cut -f 3)
+  ami_purge_allowed=$(echo "$ami_tag_list" | grep -P "^.*PurgeAllow\strue$" | cut -f 3)
 
-  for snapshot_id_evaluated in $snapshot_purge_allowed; do
+  for ami_id_evaluated in $ami_purge_allowed; do
     #gets the "PurgeAfterFE" date which is in UTC with UNIX Time format (or xxxxxxxxxx / %s)
-    purge_after_fe=$(echo "$snapshot_tag_list" | grep -P .*$snapshot_id_evaluated'\s'PurgeAfterFE.* | cut -f 5)
+    purge_after_fe=$(echo "$ami_tag_list" | grep -P .*$ami_id_evaluated'\s'PurgeAfterFE.* | cut -f 5)
     #if purge_after_date is not set then we have a problem. Need to alert user.
     if [[ -z $purge_after_fe ]]; then
       #Alerts user to the fact that a Snapshot was found with PurgeAllow=true but with no PurgeAfterFE date.
-      echo "AMI with the AMI ID \"$snapshot_id_evaluated\" has the tag \"PurgeAllow=true\" but does not have a \"PurgeAfterFE=xxxxxxxxxx\" key/value pair. $app_name is unable to determine if $snapshot_id_evaluated should be purged." 1>&2
+      echo "AMI with the AMI ID \"$ami_id_evaluated\" has the tag \"PurgeAllow=true\" but does not have a \"PurgeAfterFE=xxxxxxxxxx\" key/value pair. $app_name is unable to determine if $ami_id_evaluated should be purged." 1>&2
     else
       # if $purge_after_fe is less than $current_date then
       # PurgeAfterFE is earlier than the current date
       # and the snapshot can be safely purged
       if [[ $purge_after_fe < $current_date ]]; then
-        echo "AMI \"$snapshot_id_evaluated\" with the PurgeAfterFE date of \"$purge_after_fe\" will be deleted."
-        ec2-deregister --region $region $snapshot_id_evaluated
+        # get appropriate snapshot-ids firstly
+        snapshot_purge_list=$(ec2-describe-images --region $region $ami_id_evaluated | grep BLOCKDEVICEMAPPING | awk '{print $4}')
+
+        echo "AMI \"$ami_id_evaluated\" with the PurgeAfterFE date of \"$purge_after_fe\" will be deleted."
+        ec2-deregister --region $region $ami_id_evaluated
+
+        # purge snapshots of the selected AMI
+        for snapshot_id_evaluated in $snapshot_purge_list; do
+            echo "Snapshot \"$snapshot_id_evaluated\" of the AMI \"$ami_id_evaluated\" will be deleted."
+            ec2-delete-snapshot --region $region $snapshot_id_evaluated
+        done
       fi
     fi
   done
