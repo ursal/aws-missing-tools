@@ -1,6 +1,6 @@
 #!/bin/bash -
-# Date: 2015-02-25
-# Version 3.1
+# Date: 2015-02-26
+# Version 3.2
 # License Type: GNU GENERAL PUBLIC LICENSE, Version 3
 # Author:
 # Colin Johnson / https://github.com/colinbjohnson / colin@cloudavail.com
@@ -267,7 +267,7 @@ purge_snapshots=false
 make_copy=false
 #handles options processing
 
-while getopts :s:c:r:i:t:k:y:pnhu opt; do
+while getopts :s:c:r:i:t:k:ypnhu opt; do
   case $opt in
     s) selection_method="$OPTARG" ;;
     c) cron_primer="$OPTARG" ;;
@@ -275,7 +275,7 @@ while getopts :s:c:r:i:t:k:y:pnhu opt; do
     v) instanceid="$OPTARG" ;;
     t) tag="$OPTARG" ;;
     k) purge_after_input="$OPTARG" ;;
-    y) make_copy="$OPTARG" ;;
+    y) make_copy=true ;;
     n) name_tag_create=true ;;
     h) hostname_tag_create=true ;;
     p) purge_snapshots=true ;;
