@@ -8,6 +8,7 @@ LOG=ec2-automate-backup2ami.$MODE.log
 LOG_ERR=ec2-automate-backup2ami.$MODE.err
 EMAILS=$2
 
+#-- set AWS_ELB_HOME, EC2_HOME and PATH
 source /etc/profile.d/ec2-api.sh
 
 source .$MODE
