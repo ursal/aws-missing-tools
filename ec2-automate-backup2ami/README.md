@@ -5,7 +5,8 @@ Since ec2-automate-backup2ami based on the latest version of colinbjohnson/aws-m
 * -i option specifies the single instance (instance id) to backup (either -i or -t option is required)
 * -k option now takes suffix which specifies the dimension of the purging interval: d for days (default), h for hours, m for minutes
 * -s option is a selector which should be either "instanceid" or "tag"
-* -y option instructs the script to copy AMI to a random region for better backup durability
+* -y option expects the tag name which will instruct the script to copy AMI to a random region for better backup durability (example: -y "Copy=true")
+* -o restricts a number of regions used as backup locations (example: -o "us-west-1 eu-central-1")
 
 ec2-backup-wrapper is a helper script which sends email alerts if the backup process has failed
 
@@ -19,6 +20,6 @@ Here is how I execute it from cron:
 
 # Information
 - Author: jazzl0ver, based on Colin Johnson's ec2-automate-backup script
-- Date: 2015-02-25
-- Version 3.1
+- Date: 2015-08-13
+- Version 4.0
 - License Type: GNU GENERAL PUBLIC LICENSE, Version 3
