@@ -1,6 +1,6 @@
 #!/bin/bash -
-# Date: 2015-02-26
-# Version 3.2
+# Date: 2015-08-13
+# Version 4.0
 # License Type: GNU GENERAL PUBLIC LICENSE, Version 3
 # Author:
 # Colin Johnson / https://github.com/colinbjohnson / colin@cloudavail.com
@@ -20,7 +20,7 @@ prerequisite_check() {
     #use of "hash" chosen as it is a shell builtin and will add programs to hash table, possibly speeding execution. Use of type also considered - open to suggestions.
     hash $prerequisite &> /dev/null
     if [[ $? == 1 ]]; then #has exits with exit status of 70, executable was not found
-      echo "In order to use $app_name, the executable \"$prerequisite\" must be installed." 1>&2 ; exit 70
+      echo "=== In order to use $app_name, the executable \"$prerequisite\" must be installed." 1>&2 ; exit 70
     fi
   done
 }
@@ -30,18 +30,18 @@ get_IList() {
   case $selection_method in
     instanceid)
       if [[ -z $instanceid ]]; then
-        echo "The selection method \"instanceid\" (which is $app_name's default selection_method of operation or requested by using the -s instanceid parameter) requires an instanceid (-i instanceid) for operation. Correct usage is as follows: \"-i i-6d6a0527\",\"-s instanceid -i i-6d6a0527\" or \"-i \"i-6d6a0527 i-636a0112\"\" if multiple instances are to be selected." 1>&2 ; exit 64
+        echo "=== The selection method \"instanceid\" (which is $app_name's default selection_method of operation or requested by using the -s instanceid parameter) requires an instanceid (-i instanceid) for operation. Correct usage is as follows: \"-i i-6d6a0527\",\"-s instanceid -i i-6d6a0527\" or \"-i \"i-6d6a0527 i-636a0112\"\" if multiple instances are to be selected." 1>&2 ; exit 64
       fi
       instance_selection_string="$instanceid"
       ;;
     tag)
       if [[ -z $tag ]]; then
-        echo "The selected selection_method \"tag\" (-s tag) requires a valid tag (-t key=value) for operation. Correct usage is as follows: \"-s tag -t backup=true\" or \"-s tag -t Name=my_tag.\"" 1>&2 ; exit 64
+        echo "=== The selected selection_method \"tag\" (-s tag) requires a valid tag (-t key=value) for operation. Correct usage is as follows: \"-s tag -t backup=true\" or \"-s tag -t Name=my_tag.\"" 1>&2 ; exit 64
       fi
       instance_selection_string="--filter tag:$tag"
 #      instance_selection_string=""
       ;;
-    *) echo "If you specify a selection_method (-s selection_method) for selecting instances you must select either \"instanceid\" (-s instanceid) or \"tag\" (-s tag)." 1>&2 ; exit 64 ;;
+    *) echo "=== If you specify a selection_method (-s selection_method) for selecting instances you must select either \"instanceid\" (-s instanceid) or \"tag\" (-s tag)." 1>&2 ; exit 64 ;;
   esac
   #creates a list of all instances that match the selection string from above
   instance_backup_list_complete=$(ec2-describe-instances --show-empty-fields --region $region $instance_selection_string 2>&1)
@@ -54,9 +54,36 @@ get_IList() {
   instance_backup_list=$(echo "$instance_backup_list_complete" | grep ^INSTANCE | cut -f 2)
 }
 
+tag_ami_resource() {
+    resource_id=$1
+    shift
+    region=$1
+    shift
+    tags=$@
+
+    echo "=== Tagging AMI $resource_id in $region region with the following tags: $tags"
+    ec2-create-tags $resource_id --region $region $tags
+
+    # wait until snapshots become available, then tag them
+    snapshots=""
+    while [[ ! -n $snapshots ]]; do
+        snapshots=$(ec2-describe-images $resource_id --region $region | grep ^BLOCKDEVICEMAPPING | grep "snap" | awk '{print $4}')
+        [[ -n $snapshots ]] && break
+        # the snapshot ids are not yet available => wait another 5 minutes
+        sleep 300
+    done
+
+    for ec2_snapshot_resource_id in $snapshots; do
+        echo "=== Tagging Snapshot $ec2_snapshot_resource_id (AMI: $resource_id) with the following tags: $tags"
+        ec2-create-tags $resource_id --region $region $tags
+    done
+}
+
 create_AMI_Tags() {
-  instance_region=$1
-  ami_region=$2
+  ami_id=$1
+  instance_region=$2
+  ami_region=$3
+  original_ami_id=$4
 
   [[ ! -n $instance_region ]] && instance_region=$region
   [[ ! -n $ami_region ]] && ami_region=$instance_region
@@ -83,35 +110,44 @@ create_AMI_Tags() {
 
   #if $snapshot_tags is not zero length then set the tag on the snapshot using ec2-create-tags
   if [[ -n $snapshot_tags ]]; then
-    echo "Tagging AMI $ec2_snapshot_ami_id in $ami_region region with the following Tags: $snapshot_tags"
-    ec2-create-tags $ec2_ami_resource_id --region $ami_region $snapshot_tags
-
-    for ec2_snapshot_resource_id in $(ec2-describe-images $ec2_ami_resource_id --region $ami_region | grep ^BLOCKDEVICEMAPPING | awk '{print $4}'); do
-        echo "Tagging Snapshot $ec2_snapshot_resource_id (AMI: $ec2_ami_resource_id) with the following Tags: $snapshot_tags"
-        ec2-create-tags $ec2_snapshot_resource_id --region $ami_region $snapshot_tags
-    done
+    if [[ -n $original_ami_id ]]; then
+        tag_ami_resource $ami_id $ami_region $snapshot_tags "--tag SourceRegion=$instance_region" &
+        tag_ami_resource $original_ami_id $instance_region $snapshot_tags "--tag CopyRegion=$ami_region" &
+    else
+        tag_ami_resource $ami_id $ami_region $snapshot_tags &
+    fi
   fi
 }
 
 copy_AMI() {
-  # copies AMI to another random region for extra safety
-  arr=($other_regions)
-  other_regions_count=${#arr[*]}
-  random=$(/usr/bin/shuf -i 1-${other_regions_count} -n 1)
-  random_region=${arr[$random-1]}
+  # copies AMI to another region for extra safety
+  random_region=$1
 
   #if $random_region is not zero length then set do the copy
   if [[ -n $random_region ]]; then
-    echo "Copying AMI $ec2_snapshot_ami_id to randomly selected $random_region region"
+    echo "=== Copying AMI $ec2_ami_resource_id to randomly selected $random_region region"
+
+    # wait until AMI become available, then copy it
+    ami_status=1
+    while [ $ami_status -ne 0 ]; do
+        ec2-describe-images --region $region $ec2_ami_resource_id --hide-tags | grep ^IMAGE | cut -f5 | grep -q available
+        ami_status=$?
+        [[ $ami_status -eq 0 ]] && break
+        # the ami is not yet available => wait another 10 minutes
+        sleep 600
+    done
+
     ec2_copy_ami_result=$(ec2-copy-image --source-region $region --source-ami-id $ec2_ami_resource_id --region $random_region --name $ec2_snapshot_name --description "Backup of $ec2_ami_resource_id from $region region" 2>&1)
+
     if [[ $? != 0 ]]; then
       echo -e "An error occured when running ec2-copy-image. The error returned is below:\n$ec2_copy_ami_result" 1>&2 ; exit 70
     else
+      original_ami_id=$ec2_ami_resource_id
       ec2_ami_resource_id=$(echo "$ec2_copy_ami_result" | grep ^IMAGE | cut -f 2)
-      create_AMI_Tags $region $random_region
+      create_AMI_Tags $ec2_ami_resource_id $region $random_region $original_ami_id
     fi
   else
-    echo "This should never happen"
+    echo "=== Copy_AMI: no region specified (this should never happen)" 1>&2
   fi
 }
 
@@ -195,7 +231,7 @@ purge_AMIs() {
     #if purge_after_date is not set then we have a problem. Need to alert user.
     if [[ -z $purge_after_fe ]]; then
       #Alerts user to the fact that a Snapshot was found with PurgeAllow=true but with no PurgeAfterFE date.
-      echo "AMI with the AMI ID \"$ami_id_evaluated\" has the tag \"PurgeAllow=true\" but does not have a \"PurgeAfterFE=xxxxxxxxxx\" key/value pair. $app_name is unable to determine if $ami_id_evaluated should be purged." 1>&2
+      echo "=== AMI with the AMI ID \"$ami_id_evaluated\" has the tag \"PurgeAllow=true\" but does not have a \"PurgeAfterFE=xxxxxxxxxx\" key/value pair. $app_name is unable to determine if $ami_id_evaluated should be purged." 1>&2
     else
       # if $purge_after_fe is less than $current_date then
       # PurgeAfterFE is earlier than the current date
@@ -204,12 +240,12 @@ purge_AMIs() {
         # get appropriate snapshot-ids firstly
         snapshot_purge_list=$(ec2-describe-images --region $region $ami_id_evaluated | grep BLOCKDEVICEMAPPING | awk '{print $4}')
 
-        echo "AMI \"$ami_id_evaluated\" with the PurgeAfterFE date of \"$purge_after_fe\" will be deleted."
+        echo "=== AMI \"$ami_id_evaluated\" with the PurgeAfterFE date of \"$purge_after_fe\" will be deleted."
         ec2-deregister --region $region $ami_id_evaluated
 
         # purge snapshots of the selected AMI
         for snapshot_id_evaluated in $snapshot_purge_list; do
-            echo "Snapshot \"$snapshot_id_evaluated\" of the AMI \"$ami_id_evaluated\" will be deleted."
+            echo "=== Snapshot \"$snapshot_id_evaluated\" of the AMI \"$ami_id_evaluated\" will be deleted."
             ec2-delete-snapshot --region $region $snapshot_id_evaluated
         done
       fi
@@ -237,13 +273,13 @@ purge_EBS_Snapshots() {
     #if purge_after_date is not set then we have a problem. Need to alert user.
     if [[ -z $purge_after_fe ]]; then
       #Alerts user to the fact that a Snapshot was found with PurgeAllow=true but with no PurgeAfterFE date.
-      echo "Snapshot with the Snapshot ID \"$snapshot_id_evaluated\" has the tag \"PurgeAllow=true\" but does not have a \"PurgeAfterFE=xxxxxxxxxx\" key/value pair. $app_name is unable to determine if $snapshot_id_evaluated should be purged." 1>&2
+      echo "=== Snapshot with the Snapshot ID \"$snapshot_id_evaluated\" has the tag \"PurgeAllow=true\" but does not have a \"PurgeAfterFE=xxxxxxxxxx\" key/value pair. $app_name is unable to determine if $snapshot_id_evaluated should be purged." 1>&2
     else
       # if $purge_after_fe is less than $current_date then
       # PurgeAfterFE is earlier than the current date
       # and the snapshot can be safely purged
       if [[ $purge_after_fe < $current_date ]]; then
-        echo "Snapshot \"$snapshot_id_evaluated\" with the PurgeAfterFE date of \"$purge_after_fe\" will be deleted."
+        echo "=== Snapshot \"$snapshot_id_evaluated\" with the PurgeAfterFE date of \"$purge_after_fe\" will be deleted."
         ec2-delete-snapshot --region $region $snapshot_id_evaluated
       fi
     fi
@@ -267,7 +303,7 @@ purge_snapshots=false
 make_copy=false
 #handles options processing
 
-while getopts :s:c:r:i:t:k:ypnhu opt; do
+while getopts :s:c:r:i:t:k:y:o:pnhu opt; do
   case $opt in
     s) selection_method="$OPTARG" ;;
     c) cron_primer="$OPTARG" ;;
@@ -275,12 +311,13 @@ while getopts :s:c:r:i:t:k:ypnhu opt; do
     v) instanceid="$OPTARG" ;;
     t) tag="$OPTARG" ;;
     k) purge_after_input="$OPTARG" ;;
-    y) make_copy=true ;;
+    y) make_copy_tag="$OPTARG" ;;
+    o) other_regions="$OPTARG" ;;
     n) name_tag_create=true ;;
     h) hostname_tag_create=true ;;
     p) purge_snapshots=true ;;
     u) user_tags=true ;;
-    *) echo "Error with Options Input. Cause of failure is most likely that an unsupported parameter was passed or a parameter was passed without a corresponding option." 1>&2 ; exit 64 ;;
+    *) echo "=== Error with Options Input. Cause of failure is most likely that an unsupported parameter was passed or a parameter was passed without a corresponding option." 1>&2 ; exit 64 ;;
   esac
 done
 
@@ -318,12 +355,22 @@ if [[ -n $purge_after_input ]]; then
   fi
   purge_after_date_fe=$(get_purge_after_date_fe)
   purge_after_date=$(get_purge_after_date)
-  echo "Snapshots taken by $app_name will be eligible for purging after the following date (the purge after date given in seconds from epoch): $purge_after_date_fe ($purge_after_date)."
+  echo "=== Snapshots taken by $app_name will be eligible for purging after the following date (the purge after date given in seconds from epoch): $purge_after_date_fe ($purge_after_date)."
 fi
 
 for region in $regions; do
-  echo "Region: $region"
-  other_regions=$(ec2-describe-regions | grep REGION | grep -v $region | cut -f2)
+  echo "=== Region: $region"
+
+  if [[ -n $make_copy_tag ]]; then
+    if [[ -z $other_regions ]]; then
+        other_regions=$(ec2-describe-regions | grep REGION | grep -v $region | cut -f2)
+    fi
+    arr=($other_regions)
+    other_regions_count=${#arr[*]}
+    random=$(/usr/bin/shuf -i 1-${other_regions_count} -n 1)
+    random_region=${arr[$random-1]}
+    echo "=== Copy Region: $random_region"
+  fi
 
   #get_IList gets a list of AMIs for which a snapshot is desired. The list of AMIs depends upon the selection_method that is provided by user input
   get_IList
@@ -334,24 +381,27 @@ for region in $regions; do
     ec2_snapshot_name=$(ec2-describe-instances --region $region ${instance_selected} | grep ^TAG | grep Name | cut -f 5)
     ec2_snapshot_name="ec2ab_${ec2_snapshot_name}_$date_current"
 
-    echo "Starting: ec2-create-image -v -n $ec2_snapshot_name --no-reboot --region $region -d $ec2_snapshot_description $instance_selected"
-    ec2_create_ami_result=$(ec2-create-image -n $ec2_snapshot_name -v --no-reboot --region $region -d $ec2_snapshot_description $instance_selected 2>&1)
+    echo "=== Starting: ec2-create-image -v -n $ec2_snapshot_name --no-reboot --region $region -d $ec2_snapshot_description $instance_selected"
+    ec2_create_ami_result=$(ec2-create-image -n "$ec2_snapshot_name" -v --no-reboot --region $region -d "$ec2_snapshot_description" $instance_selected 2>&1)
     if [[ $? != 0 ]]; then
       echo -e "An error occured when running ec2-create-image. The error returned is below:\n$ec2_create_ami_result" 1>&2 ; exit 70
     else
       ec2_ami_resource_id=$(echo "$ec2_create_ami_result" | grep ^IMAGE | cut -f 2)
-      create_AMI_Tags $region
-      if $make_copy; then
-         copy_AMI
+      create_AMI_Tags $ec2_ami_resource_id $region
+      [[ -z $make_copy_tag ]] && continue
+      ec2-describe-instances --region $region ${instance_selected} --filter tag:$make_copy_tag | grep -q INSTANCE
+      make_copy=$?
+      if [[ $make_copy -eq 0 ]]; then
+         copy_AMI $random_region &
       fi
     fi
   done
 
   #if purge_snapshots is true, then run purge_EBS_Snapshots function
   if $purge_snapshots; then
-    echo "AMI Purging is Starting Now."
+    echo "=== AMI Purging is Starting Now."
     purge_AMIs
-    echo "Snapshot Purging is Starting Now."
+    echo "=== Snapshot Purging is Starting Now."
     purge_EBS_Snapshots
   fi
 
