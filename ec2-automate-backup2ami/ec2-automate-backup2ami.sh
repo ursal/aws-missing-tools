@@ -75,7 +75,7 @@ tag_ami_resource() {
 
     for ec2_snapshot_resource_id in $snapshots; do
         echo "=== Tagging Snapshot $ec2_snapshot_resource_id (AMI: $resource_id) with the following tags: $tags"
-        ec2-create-tags $resource_id --region $region $tags
+        ec2-create-tags $ec2_snapshot_resource_id --region $region $tags
     done
 }
 
