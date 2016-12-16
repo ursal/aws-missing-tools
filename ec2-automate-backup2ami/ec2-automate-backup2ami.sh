@@ -61,6 +61,9 @@ tag_ami_resource() {
     shift
     tags=$@
 
+    # exit if AMI is no longer exists
+    ec2-describe-images $resource_id --region $region | grep -q ^BLOCKDEVICEMAPPING || exit
+    
     echo "=== Tagging AMI $resource_id in $region region with the following tags: $tags"
     ec2-create-tags $resource_id --region $region $tags
 
