@@ -8,6 +8,8 @@ ec2-automate-backup was created to provide easy backup/snapshot functionality fo
 # Installation Instructions:
 ec2-automate-backup requires the AWS Command Line Interface tool be installed and properly configured. Instructions for installing the AWS Command Line Interface tool is available at https://aws.amazon.com/cli/.
 
+For ec2-automate-backup2ami description check the file READMI.backup2ami.md
+
 # Directions For Use:
 ## Example of Use:
 `ec2-automate-backup.sh -v vol-6d6a0527`
@@ -22,7 +24,7 @@ ec2-automate-backup requires one of the following two parameters be provided:
 ## Optional Parameters:
 `-r <region>` - the region that contains the EBS volumes for which you wish to have a snapshot created.
 
-`-s <selection_method>` - the selection method by which EBS volumes will be selected. Currently supported selection methods are "volumeid" and "tag." The selection method "volumeid" identifies EBS volumes for which a snapshot should be taken whereas the selection method "tag" identifies EBS volumes for which a snapshot should be taken by a filter that utilizes a Key and Value pair.
+`-s <selection_method>` - the selection method by which EBS volumes will be selected. Currently supported selection methods are "volumeid" and "tag". The selection method "volumeid" identifies EBS volumes for which a snapshot should be taken by volume id whereas the selection method "tag" identifies EBS volumes for which a snapshot should be taken by a key=value format tag.
 
 `-c <cron_primer_file>` - running with the -c option and a providing a file will cause ec2-automate-backup to source a file for environmental configuration - ideal for running ec2-automate-backup under cron. An example cron primer file is located in the "Resources" directory and is called cron-primer.sh.
 
